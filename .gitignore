@@ -1,0 +1,2 @@
+# apply.sh regenerates the backup from pristine-client.js on every apply
+seam/backup-client.js
