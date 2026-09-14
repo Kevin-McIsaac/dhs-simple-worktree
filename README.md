@@ -5,64 +5,73 @@ One-click git-worktree sessions for DeepSeek Harness. The sidebar project row's
 the one moment a session's `cwd` is settable — and the session renders **under
 the existing project row**, not under a separate workspace.
 
+## Why
+
+When working with an agentic coding tool it is common to want several tasks
+running in parallel on different branches. DSH supports this with sessions —
+but every session on a project shares the same Git checkout, so parallel
+sessions can clobber each other: one session's `git checkout` or `git reset`
+yanks the branch out from under another mid-task.
+
+The simple Git answer is worktrees: one checkout per task, each isolated. This
+plugin changes the default behavior so that **adding a session (the + button)
+first creates a worktree, then creates the session inside it**. The session's
+`cwd` is set once, at creation, and immutable afterwards — so birthing it in
+the tree is the only moment isolation can be guaranteed.
+
 ## What the "+" button does
 
-One click, no typing, on any project row whose workspace is a git repo:
+One click on a project row's +:
 
-1. **cut** — the plugin route runs
-   `git worktree add -b wt/<slug> .wt/<slug> <base>` where `<slug>` is
-   `wt-YYYYMMDD-HHMM` (auto-suffixed `-2`, `-3` on collision) and `<base>` is
-   `origin/HEAD`, falling back to `origin/main`. There is **no pre-cut
-   fetch**: the branch is cut from last-known refs (sub-second; the git
-   badge keeps refs fresh).
-2. **bootstrap, in the background** — the checkout's `.env` is symlinked into
-   the tree when one exists; if the repo declares an executable
-   `.worktree-bootstrap` at its root, it runs inside the tree WITHOUT
-   blocking the session. Its outcome streams to the progress feed and never
-   fails the session.
-3. **open** — the client births the session with DSH's own
-   `sessions.create({ workspaceId })` → `sessions.open(id)`.
-   `session.create` sets `cwd = the tree`, and cwd is immutable thereafter.
-
-While the cut runs, a progress chip appears in the input bar with live
-per-step text pushed over an SSE feed (`/api/worktree-session/progress`,
-badge-style event streaming — no polling anywhere) and disappears when the
-bootstrap outcome settles.
+1. **Worktree** — `git worktree add -b wt/<slug> .wt/<slug> <base>` from the
+   last-known refs (no network). `<slug>` is `wt-YYYYMMDD-HHMM` (auto-suffixed
+   `-2`, `-3` on collision); `<base>` is `origin/HEAD`, falling back to
+   `origin/main`. `.wt/` is excluded via `.git/info/exclude` — local-only,
+   never a tracked file.
+2. **Bootstrap** — the checkout's `.env` is symlinked into the tree, and a
+   repo-declared executable `.worktree-bootstrap` runs inside it, in the
+   background: the session never waits on it.
+3. **Open** — the session is created in the tree and opens with a working
+   composer; its sidebar row renders under the project.
 
 Anything else — plugin absent, route down, not a git repo — falls back to the
-native flow, so non-git workspaces behave exactly as upstream.
-
-## Why the session shows under the project
-
-The tree IS registered as a workspace — membership is mandatory, because
-`attachSession` pins cwd to the workspace path and the conversation hero
-disables the composer ("Choose a workspace to start") for sessions with no
-workspace. But the worktree's group must not render as a separate project:
-a small hash-guarded patch to the workspace browser absorbs every
-`<project>/.wt/…` workspace group into its project's row, and re-homes
-cwd-stray sessions the same way (so manual `git worktree add` trees merge
-too). The sidebar's top **"New session" button is untouched** — it remains
-the native in-checkout path.
+native flow, so non-git workspaces behave exactly as upstream. The sidebar's
+top **"New session" button is untouched** and remains the native in-checkout
+path.
 
 ## Deleting a worktree
 
 The session row's **⋯ menu** gains a "Delete worktree" item for sessions
-living under `<project>/.wt/` (patched in; flat/search lists never show it).
-Confirm, and the cleanup route removes tree, branch, and workspace
-registration. (There is no worktree list endpoint: the + button and the ⋯
-menu are the entire API surface.) The route refuses — the dialog then shows the reason with an
-explicit force confirm — when the tree is dirty or the branch holds commits
-no remote contains and `gh` cannot confirm a merged PR. `gh`'s absence fails
-closed: squash-merged branches are never ancestors of `main`, so ancestry
-alone must never be the authority. There is no input-bar chip any more: the
-+ button owns creation and the ⋯ menu owns deletion.
+living under `<project>/.wt/`. Confirm, and the cleanup route removes tree,
+branch, and workspace registration together. The route refuses — the dialog
+then shows the reason, with an explicit force confirm — when the tree is dirty
+or the branch holds commits no remote contains and `gh` cannot confirm a
+merged PR. `gh`'s absence fails closed: squash-merged branches are never
+ancestors of `main`, so ancestry alone must never be the authority.
 
-## Safety invariants
+## Why the apply script
 
-- Only trees under `<repo>/.wt/` with a `wt/…` branch are ever removed.
-- The main checkout is never removable.
-- Cleanup requires either remote containment, a MERGED PR, or `force: true`.
-- `.wt/` is excluded via `.git/info/exclude` (local-only; never a tracked file).
+The three sidebar behaviors — the + handoff, the group absorption, and the ⋯
+menu item — live inside DSH's compiled workspace-browser bundle
+(`@deepseek-ai/dsh-client-ui-workspace/lib/client.js`). DSH's plugin system
+exposes declared slot seams (input-bar chips, session-row badges) but no seam
+covers those points, and a plugin cannot change how the browser groups rows,
+what its + button does, or what its session menu contains. So the patch edits
+the installed bundle file directly, and `seam/apply.sh` makes that safe:
+
+- **hash-guard** — refuses to touch an unrecognized upstream build; a DSH
+  update is never clobbered, only skipped
+- **marker detection** — the patch carries a comment marker, so a stale patch
+  of ours can be upgraded in place while a genuine upstream change is left alone
+- **revert** — restores the baseline (badge seam included) at any time
+- **status** — run this first after a DSH update; it reports drift without
+  touching anything
+
+Because the patch lives in `node_modules`, a DSH reinstall or update reverts
+to pristine — re-run `apply.sh apply` afterwards. It composes with the
+`dsh-git-badge` seam patch (disjoint regions; the baseline is the
+badge-patched build). If upstream ever ships these seams, `apply` becomes a
+no-op and the plugin keeps working unchanged.
 
 ## Install
 
@@ -75,13 +84,8 @@ then add `"dsh-worktree-session"` to `dsh.profile.bundles` in
 web process:
 
 ```bash
-seam/apply.sh apply      # hash-guarded; refuses unknown upstream builds
-seam/apply.sh revert     # restore the baseline (badge seam included) at any time
-seam/apply.sh status     # run this first after a DSH update
+seam/apply.sh apply
 ```
-
-The patch composes with the `dsh-git-badge` seam patch (disjoint regions); its
-pristine baseline is the badge-patched build.
 
 ## Testing
 
@@ -89,9 +93,8 @@ pristine baseline is the badge-patched build.
 npm test
 ```
 
-20 tests against real temporary repositories (bare origin + clone, real
+18 tests against real temporary repositories (bare origin + clone, real
 `git worktree add`, real `.worktree-bootstrap` runs) plus the route handlers
 through a captured webServer. No DSH, no network, no restart. The test-only
-exports (`config`, `uniqueSlug`, `createWorktree`, `cleanupWorktree`,
-`listWorktrees`, `makeDeps`) let the node half be driven without booting a
-profile.
+exports (`config`, `uniqueSlug`, `createWorktree`, `cleanupWorktree`, …) let
+the node half be driven without booting a profile.
