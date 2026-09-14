@@ -704,6 +704,11 @@ window.__ModuleLoader__.load({
 				label: t("delete.workspace"),
 				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutline16, {}),
 				danger: true
+			}, {
+				/* dsh-worktree-session:patch — opens the plugin's delete-worktree picker. */
+				id: "deleteWorktree",
+				label: "Delete worktree…",
+				icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconBranchOutline16, {})
 			}];
 			const ownRow = (0, react_jsx_runtime.jsxs)("div", {
 				className: clsx(Rows_module_css_default.projectRow, menuOpen && Rows_module_css_default.menuOpen),
@@ -743,7 +748,13 @@ window.__ModuleLoader__.load({
 							items: workspaceMenuItems,
 							onSelect: (id) => {
 								setMenuOpen(false);
-								/* v8 ignore next -- Menu can emit only the rename and delete rows supplied above. */
+								/* dsh-worktree-session:patch — the plugin lists the project's trees, owns
+								 * the confirmation and the safety refusals; with no plugin loaded the item
+								 * simply does nothing. */
+								if (id === "deleteWorktree" && typeof window !== "undefined" && window.__dshWorktreeSession !== void 0 && window.__dshWorktreeSession.openWorktreePicker !== void 0) {
+									window.__dshWorktreeSession.openWorktreePicker(group.workspaceId);
+									return;
+								}
 								if (id !== "rename" && id !== "delete") return;
 								if (id === "rename") actions.rename();
 								else actions.delete();

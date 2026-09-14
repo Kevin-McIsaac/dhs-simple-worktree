@@ -376,3 +376,24 @@ test("routes: cleanup end-to-end", async (t) => {
 	assert.equal(registry.get(created.body.workspaceId), void 0, "registration retired");
 });
 
+
+test("routes: the list endpoint reports the project's worktrees", async (t) => {
+	const { repo } = mkRepo(t);
+	const registry = fakeRegistry();
+	const routes = boot({ repo, registry });
+	const project = registry.list()[0];
+
+	const created = await callRoute(routes, "/api/worktree-session/create", fakeReq(JSON.stringify({ workspaceId: project.id })));
+	assert.equal(created.status, 200);
+
+	const listed = await callRoute(routes, `/api/worktree-session/list?workspaceId=${project.id}`, fakeReq());
+	assert.equal(listed.status, 200);
+	assert.equal(listed.body.worktrees.length, 1);
+	assert.equal(listed.body.worktrees[0].branch, created.body.branch);
+	assert.equal(listed.body.worktrees[0].dirty, false);
+	assert.equal(listed.body.worktrees[0].merged, true);
+
+	const unknown = await callRoute(routes, "/api/worktree-session/list?workspaceId=ws-999", fakeReq());
+	assert.equal(unknown.status, 400);
+	assert.match(unknown.body.error, /not found/);
+});

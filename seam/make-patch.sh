@@ -170,6 +170,62 @@ f"""\t\t\t\t\t\t\t\t\t\t// only the tree knows which workspace a row belongs to;
 {T*11}workspaceCwd: group.cwd,""",
 )
 
+# --- 4. Project row ⋯ menu: "Delete worktree…" opens the plugin's picker ------
+# Two anchored sub-edits: the workspace menu items (the menu only renders for
+# real workspaces) and the onSelect dispatch. The plugin owns the list, the
+# confirmation and the safety refusals; with no plugin loaded the item does
+# nothing.
+rep(
+f"""\t\t\tconst workspaceMenuItems = [{{
+{T*4}id: "rename",
+{T*4}label: t("rename"),
+{T*4}icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconEditOutline16, {{}})
+{T*3}}}, {{
+{T*4}id: "delete",
+{T*4}label: t("delete.workspace"),
+{T*4}icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutline16, {{}}),
+{T*4}danger: true
+{T*3}}}];""",
+f"""\t\t\tconst workspaceMenuItems = [{{
+{T*4}id: "rename",
+{T*4}label: t("rename"),
+{T*4}icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconEditOutline16, {{}})
+{T*3}}}, {{
+{T*4}id: "delete",
+{T*4}label: t("delete.workspace"),
+{T*4}icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutline16, {{}}),
+{T*4}danger: true
+{T*3}}}, {{
+{T*4}/* dsh-worktree-session:patch — opens the plugin's delete-worktree picker. */
+{T*4}id: "deleteWorktree",
+{T*4}label: "Delete worktree…",
+{T*4}icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconBranchOutline16, {{}})
+{T*3}}}];""",
+)
+
+rep(
+f"""\t\t\t\t\t\t\tonSelect: (id) => {{
+{T*8}setMenuOpen(false);
+{T*8}/* v8 ignore next -- Menu can emit only the rename and delete rows supplied above. */
+{T*8}if (id !== "rename" && id !== "delete") return;
+{T*8}if (id === "rename") actions.rename();
+{T*8}else actions.delete();
+{T*7}}},""",
+f"""\t\t\t\t\t\t\tonSelect: (id) => {{
+{T*8}setMenuOpen(false);
+{T*8}/* dsh-worktree-session:patch — the plugin lists the project's trees, owns
+{T*8} * the confirmation and the safety refusals; with no plugin loaded the item
+{T*8} * simply does nothing. */
+{T*8}if (id === "deleteWorktree" && typeof window !== "undefined" && window.__dshWorktreeSession !== void 0 && window.__dshWorktreeSession.openWorktreePicker !== void 0) {{
+{T*9}window.__dshWorktreeSession.openWorktreePicker(group.workspaceId);
+{T*9}return;
+{T*8}}}
+{T*8}if (id !== "rename" && id !== "delete") return;
+{T*8}if (id === "rename") actions.rename();
+{T*8}else actions.delete();
+{T*7}}},""",
+)
+
 open(dst, "w", encoding="utf-8").write(text)
 print(f"patched: {count} anchored edits -> {dst}")
 PY
