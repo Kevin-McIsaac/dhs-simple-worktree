@@ -1,0 +1,4 @@
+# dsh-worktree-session bundle patch: mount the node half into the host plugin tree.
+- insert:
+    - id: worktree-session
+      name: 'dsh-worktree-session'
