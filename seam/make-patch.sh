@@ -123,6 +123,67 @@ f"""\t\tfunction groupByWorkspace(list, workspaces, archived, ungroupedOrder) {{
 {T*2}}}""",
 )
 
+# --- 3. Session row ⋯ menu: "Delete worktree" for sessions living in a tree ---
+# Three anchored sub-edits: the component signature (thread workspaceCwd), the
+# menu items (conditional append), the onSelect dispatch, and the tree call
+# site that supplies the prop. Flat/search lists never receive it.
+rep(
+f"""\t\tfunction SessionNodeItem({{ node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, t, renderSlot, workspaceId }}) {{""",
+f"""\t\tfunction SessionNodeItem({{ node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, t, renderSlot, workspaceId, workspaceCwd }}) {{""",
+)
+
+rep(
+f"""\t\t\t\t{{
+{T*5}id: "archive",
+{T*5}label: t("menu.archiveSession"),
+{T*5}icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconArchiveOutline20, {{ size: 16 }})
+{T*4}}}
+{T*3}];""",
+f"""\t\t\t\t{{
+{T*5}id: "archive",
+{T*5}label: t("menu.archiveSession"),
+{T*5}icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconArchiveOutline20, {{ size: 16 }})
+{T*4}}},
+{T*4}/* dsh-worktree-session:patch — only the tree supplies workspaceCwd, so the
+{T*4} * item appears on worktree sessions in the browser tree and nowhere else. */
+{T*4}...(workspaceCwd !== void 0 && String(workspaceCwd).includes("/.wt/") ? [{{
+{T*5}id: "deleteWorktree",
+{T*5}label: "Delete worktree",
+{T*5}icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutline16, {{}})
+{T*4}}}] : [])
+{T*3}];""",
+)
+
+rep(
+f"""\t\t\t\t\t\t\t\tonSelect: (id) => {{
+{T*9}setMenuOpen(false);
+{T*9}if (id === "rename") onRename(node.id, row.title);
+{T*9}if (id === "fork") onFork(node.id);
+{T*9}if (id === "archive") onArchive(node.id);
+{T*8}}},""",
+f"""\t\t\t\t\t\t\t\tonSelect: (id) => {{
+{T*9}setMenuOpen(false);
+{T*9}if (id === "rename") onRename(node.id, row.title);
+{T*9}if (id === "fork") onFork(node.id);
+{T*9}if (id === "archive") onArchive(node.id);
+{T*9}/* dsh-worktree-session:patch — the plugin owns the confirmation and the
+{T*9} * safety refusals; with no plugin loaded the item simply does nothing. */
+{T*9}if (id === "deleteWorktree" && typeof window !== "undefined" && window.__dshWorktreeSession !== void 0 && window.__dshWorktreeSession.deleteWorktree !== void 0) window.__dshWorktreeSession.deleteWorktree(workspaceCwd);
+{T*8}}},""",
+)
+
+rep(
+f"""\t\t\t\t\t\t\t\t\t\t// only the tree knows which workspace a row belongs to; the
+{T*11}// flat and search lists pass neither prop, so they stay bare
+{T*11}workspaceId: group.workspaceId,""",
+f"""\t\t\t\t\t\t\t\t\t\t// only the tree knows which workspace a row belongs to; the
+{T*11}// flat and search lists pass neither prop, so they stay bare
+{T*11}workspaceId: group.workspaceId,
+{T*11}/* dsh-worktree-session:patch — the session menu's Delete-worktree item
+{T*11} * gates on this path. */
+{T*11}workspaceCwd: group.cwd,""",
+)
+
 open(dst, "w", encoding="utf-8").write(text)
 print(f"patched: {count} anchored edits -> {dst}")
 PY

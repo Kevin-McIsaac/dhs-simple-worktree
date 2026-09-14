@@ -1017,7 +1017,7 @@ window.__ModuleLoader__.load({
 				children: (0, react_jsx_runtime.jsx)(SessionRowSeam, { renderSlot, sessionId, workspaceId, label })
 			});
 		}
-		function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, t, renderSlot, workspaceId }) {
+		function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, t, renderSlot, workspaceId, workspaceCwd }) {
 			const row = node;
 			const title = displayTitle(node, t);
 			const selected = node.id === currentId;
@@ -1045,7 +1045,14 @@ window.__ModuleLoader__.load({
 					id: "archive",
 					label: t("menu.archiveSession"),
 					icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconArchiveOutline20, { size: 16 })
-				}
+				},
+				/* dsh-worktree-session:patch — only the tree supplies workspaceCwd, so the
+				 * item appears on worktree sessions in the browser tree and nowhere else. */
+				...(workspaceCwd !== void 0 && String(workspaceCwd).includes("/.wt/") ? [{
+					id: "deleteWorktree",
+					label: "Delete worktree",
+					icon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTrashOutline16, {})
+				}] : [])
 			];
 			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.HoverCard, {
 				anchor: (0, react_jsx_runtime.jsxs)("div", {
@@ -1102,6 +1109,9 @@ window.__ModuleLoader__.load({
 									if (id === "rename") onRename(node.id, row.title);
 									if (id === "fork") onFork(node.id);
 									if (id === "archive") onArchive(node.id);
+									/* dsh-worktree-session:patch — the plugin owns the confirmation and the
+									 * safety refusals; with no plugin loaded the item simply does nothing. */
+									if (id === "deleteWorktree" && typeof window !== "undefined" && window.__dshWorktreeSession !== void 0 && window.__dshWorktreeSession.deleteWorktree !== void 0) window.__dshWorktreeSession.deleteWorktree(workspaceCwd);
 								},
 								portal: true,
 								closeOnPointerLeave: true,
@@ -1849,6 +1859,9 @@ window.__ModuleLoader__.load({
 											// only the tree knows which workspace a row belongs to; the
 											// flat and search lists pass neither prop, so they stay bare
 											workspaceId: group.workspaceId,
+											/* dsh-worktree-session:patch — the session menu's Delete-worktree item
+											 * gates on this path. */
+											workspaceCwd: group.cwd,
 											now,
 											onOpen: open,
 											onRename: onSessionRename,

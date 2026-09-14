@@ -36,16 +36,17 @@ cwd-stray sessions the same way (so manual `git worktree add` trees merge
 too). The sidebar's top **"New session" button is untouched** — it remains
 the native in-checkout path.
 
-## The chip
+## Deleting a worktree
 
-The input-bar chip (`⎇ worktree`, shipped `conversation.input.left` seam) does
-the same thing for the conversation's own workspace, and its `▾` chevron opens
-a remove popover listing the repo's `.wt` trees with their safety facts
-(`*` dirty, `✓` merged). Removal runs the cleanup route, which refuses —
-showing the reason, with an explicit **force** button — when the tree is dirty
-or the branch holds commits no remote contains and `gh` cannot confirm a
-merged PR. `gh`'s absence fails closed: squash-merged branches are never
-ancestors of `main`, so ancestry alone must never be the authority.
+The session row's **⋯ menu** gains a "Delete worktree" item for sessions
+living under `<project>/.wt/` (patched in; flat/search lists never show it).
+Confirm, and the cleanup route removes tree, branch, and workspace
+registration. The route refuses — the dialog then shows the reason with an
+explicit force confirm — when the tree is dirty or the branch holds commits
+no remote contains and `gh` cannot confirm a merged PR. `gh`'s absence fails
+closed: squash-merged branches are never ancestors of `main`, so ancestry
+alone must never be the authority. There is no input-bar chip any more: the
++ button owns creation and the ⋯ menu owns deletion.
 
 ## Safety invariants
 
