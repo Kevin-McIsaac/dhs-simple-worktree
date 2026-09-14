@@ -26,14 +26,15 @@ native flow, so non-git workspaces behave exactly as upstream.
 
 ## Why the session shows under the project
 
-DSH's `attachSession` refuses any session whose `cwd` differs from its
-workspace path, so a worktree session can never be a registry member of the
-project — the trees are deliberately **never registered as workspaces**.
-Instead a small hash-guarded patch to the workspace browser re-homes sessions
-whose `cwd` sits under `<project>/.wt/` into that project's group. This works
-for trees you cut manually with plain `git worktree add` too. The sidebar's
-top **"New session" button is untouched** — it remains the native
-in-checkout path.
+The tree IS registered as a workspace — membership is mandatory, because
+`attachSession` pins cwd to the workspace path and the conversation hero
+disables the composer ("Choose a workspace to start") for sessions with no
+workspace. But the worktree's group must not render as a separate project:
+a small hash-guarded patch to the workspace browser absorbs every
+`<project>/.wt/…` workspace group into its project's row, and re-homes
+cwd-stray sessions the same way (so manual `git worktree add` trees merge
+too). The sidebar's top **"New session" button is untouched** — it remains
+the native in-checkout path.
 
 ## The chip
 

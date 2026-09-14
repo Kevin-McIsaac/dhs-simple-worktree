@@ -78,7 +78,7 @@ function fakeRegistry() {
 const FIXED_NOW = new Date(2026, 8, 14, 10, 30);
 
 async function cutOne(registry, repo, overrides = {}) {
-	return createWorktree(repo, overrides.now ?? FIXED_NOW);
+	return createWorktree(registry, repo, overrides.now ?? FIXED_NOW);
 }
 
 // ---------- slug naming ----------
@@ -144,8 +144,9 @@ test("createWorktree cuts the tree, links .env, runs the bootstrap hook, registe
 	assert.equal(git(tree, "branch", "--show-current").trim(), result.branch);
 	assert.equal(git(tree, "rev-parse", "HEAD").trim(), git(repo, "rev-parse", "origin/main").trim(), "branch tip == origin/main");
 
-	assert.ok(!("workspaceId" in result), "trees are never registered as workspaces");
-	assert.equal(registry.list().length, 0, "registry untouched by create");
+	const entity = registry.get(result.workspaceId);
+	assert.ok(entity, "tree registered as a workspace (membership is required)");
+	assert.equal(entity.path, tree);
 	// .wt/ must be locally excluded, not tracked
 	assert.ok(readFileSync(join(repo, ".git", "info", "exclude"), "utf8").includes(".wt/"));
 });
@@ -212,7 +213,7 @@ test("cleanupWorktree refuses an unmerged branch, removes it with force", async 
 	assert.equal(forced.ok, true);
 	assert.ok(!existsSync(created.cwd), "tree removed");
 	assert.throws(() => git(repo, "rev-parse", "--verify", created.branch), "branch deleted");
-	assert.ok(!("workspaceId" in created), "nothing was registered to un-register");
+	assert.ok(created.workspaceId !== void 0, "tree was registered");
 });
 
 test("cleanupWorktree allows a branch whose content reached origin (simulated merge)", async (t) => {
@@ -273,7 +274,7 @@ test("listWorktrees reports the repo's .wt trees with safety facts", async (t) =
 	const { repo } = mkRepo(t);
 	const registry = fakeRegistry();
 	const first = await cutOne(registry, repo);
-	const second = await createWorktree(repo, new Date(2026, 8, 14, 10, 31));
+	const second = await createWorktree(registry, repo, new Date(2026, 8, 14, 10, 31));
 
 	writeFileSync(join(second.cwd, "scratch.txt"), "dirty\n");
 
@@ -346,14 +347,15 @@ test("routes: create end-to-end from a session id OR a workspace id", async (t) 
 	assert.match(fromSession.body.branch, /^wt\/wt-\d{8}-\d{4}$/);
 	assert.equal(fromSession.body.branch, `wt/${fromSession.body.slug}`);
 	assert.ok(fromSession.body.cwd.startsWith(join(repo, ".wt")), "response carries the tree cwd");
-	assert.ok(!("workspaceId" in fromSession.body), "trees are never registered");
-	assert.equal(registry.list().length, 1, "only the seeded project workspace exists");
+	assert.ok(fromSession.body.workspaceId !== void 0, "tree registered (membership required)");
+	assert.equal(registry.list().length, 2, "project + tree workspaces");
 
 	// the sidebar "+" flow knows the workspace before any session exists
 	const ws = registry.list()[0];
 	const fromWorkspace = await callRoute(routes, "/api/worktree-session/create", fakeReq(JSON.stringify({ workspaceId: ws.id })));
 	assert.equal(fromWorkspace.status, 200);
 	assert.ok(fromWorkspace.body.cwd.startsWith(join(repo, ".wt")), "workspace-id flow cuts the tree too");
+	assert.ok(fromWorkspace.body.workspaceId !== void 0);
 
 	const badSession = await callRoute(routes, "/api/worktree-session/create", fakeReq(JSON.stringify({ sessionId: "nope" })));
 	assert.equal(badSession.status, 400);
@@ -396,16 +398,14 @@ test("routes: list and cleanup end-to-end", async (t) => {
 	assert.match(unknown.body.error, /not inside a git repository/);
 });
 
-test("cleanup retires a v0.1-era workspace registration left on the tree", async (t) => {
+test("cleanup retires the tree's workspace registration", async (t) => {
 	const { repo } = mkRepo(t);
 	const registry = fakeRegistry();
-	const created = await createWorktree(repo, FIXED_NOW);
-	// simulate what a v0.1 install registered for this tree
-	const stale = await registry.create(created.cwd);
+	const created = await createWorktree(registry, repo, FIXED_NOW);
 	const result = await cleanupWorktree(registry, created.cwd);
 	assert.equal(result.ok, true);
 	assert.ok(!existsSync(created.cwd));
-	assert.equal(registry.get(stale.id), void 0, "stale workspace registration retired");
+	assert.equal(registry.get(created.workspaceId), void 0, "workspace registration retired with the tree");
 });
 
 test("makeDeps resolves the session cwd through the sessions service", (t) => {

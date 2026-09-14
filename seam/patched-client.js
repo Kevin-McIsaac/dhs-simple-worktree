@@ -388,12 +388,15 @@ window.__ModuleLoader__.load({
 		*/
 		function groupByWorkspace(list, workspaces, archived, ungroupedOrder) {
 			const groups = [];
-			/* dsh-worktree-session:patch — sessions born in a worktree under
-			 * <project>/.wt/ are never registry members (attachSession pins cwd to the
-			 * workspace path), so upstream files them under "Ungrouped". Re-home them
-			 * into their project's group by cwd convention; manual `git worktree add`
-			 * trees re-home the same way. The top "New session" button is untouched and
-			 * remains the native in-checkout path. */
+			/* dsh-worktree-session:patch — worktree sessions live in their tree's own
+			 * registry workspace (attachSession pins cwd to the workspace path, and the
+			 * conversation hero disables the composer without membership), but those
+			 * worktree workspaces must not render as separate project rows. Two passes:
+			 * (a) cwd-stray sessions born under <project>/.wt/ re-home into their
+			 * project's group — manual `git worktree add` trees re-home the same way;
+			 * (b) worktree workspace GROUPS are absorbed into their project's group.
+			 * The top "New session" button is untouched and remains the native
+			 * in-checkout path. */
 			const memberIds = /* @__PURE__ */ new Set();
 			for (const workspace of workspaces) for (const id of workspace.sessionIds) memberIds.add(id);
 			const stray = list.ids.map((id) => list.byId[id]).filter((s) => s !== void 0 && !memberIds.has(s.id) && sessionVisible(s, list.current, archived));
@@ -419,7 +422,17 @@ window.__ModuleLoader__.load({
 			}
 			const rest = [...unclaimed];
 			if (rest.length > 0) groups.push(buildGroup("", void 0, void 0, void 0, "", ungroupedOrder === void 0 ? rest : orderedUngrouped(rest, ungroupedOrder), ungroupedOrder === void 0 ? "recency" : "account"));
-			return groups;
+			/* (b) absorb worktree workspace groups into their project's group. */
+			const merged = [];
+			const absorbed = [];
+			for (const g of groups) (g.cwd !== void 0 && String(g.cwd).includes("/.wt/") ? absorbed : merged).push(g);
+			for (const wt of absorbed) {
+				const projectPath = String(wt.cwd).split("/.wt/")[0];
+				const target = merged.find((g) => g.cwd !== void 0 && g.cwd === projectPath);
+				if (target === void 0) merged.push(wt);
+				else target.sessions.push(...wt.sessions);
+			}
+			return merged;
 		}
 		/** Keep navigation presentation independent from domain-owned interaction objects. */
 		function visiblePendingKind(kind) {

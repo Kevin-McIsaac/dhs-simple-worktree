@@ -75,12 +75,15 @@ f"""\t\tfunction groupByWorkspace(list, workspaces, archived, ungroupedOrder) {{
 {T*2}}}""",
 f"""\t\tfunction groupByWorkspace(list, workspaces, archived, ungroupedOrder) {{
 {T*3}const groups = [];
-{T*3}/* dsh-worktree-session:patch — sessions born in a worktree under
-{T*3} * <project>/.wt/ are never registry members (attachSession pins cwd to the
-{T*3} * workspace path), so upstream files them under "Ungrouped". Re-home them
-{T*3} * into their project's group by cwd convention; manual `git worktree add`
-{T*3} * trees re-home the same way. The top "New session" button is untouched and
-{T*3} * remains the native in-checkout path. */
+{T*3}/* dsh-worktree-session:patch — worktree sessions live in their tree's own
+{T*3} * registry workspace (attachSession pins cwd to the workspace path, and the
+{T*3} * conversation hero disables the composer without membership), but those
+{T*3} * worktree workspaces must not render as separate project rows. Two passes:
+{T*3} * (a) cwd-stray sessions born under <project>/.wt/ re-home into their
+{T*3} * project's group — manual `git worktree add` trees re-home the same way;
+{T*3} * (b) worktree workspace GROUPS are absorbed into their project's group.
+{T*3} * The top "New session" button is untouched and remains the native
+{T*3} * in-checkout path. */
 {T*3}const memberIds = /* @__PURE__ */ new Set();
 {T*3}for (const workspace of workspaces) for (const id of workspace.sessionIds) memberIds.add(id);
 {T*3}const stray = list.ids.map((id) => list.byId[id]).filter((s) => s !== void 0 && !memberIds.has(s.id) && sessionVisible(s, list.current, archived));
@@ -106,7 +109,17 @@ f"""\t\tfunction groupByWorkspace(list, workspaces, archived, ungroupedOrder) {{
 {T*3}}}
 {T*3}const rest = [...unclaimed];
 {T*3}if (rest.length > 0) groups.push(buildGroup("", void 0, void 0, void 0, "", ungroupedOrder === void 0 ? rest : orderedUngrouped(rest, ungroupedOrder), ungroupedOrder === void 0 ? "recency" : "account"));
-{T*3}return groups;
+{T*3}/* (b) absorb worktree workspace groups into their project's group. */
+{T*3}const merged = [];
+{T*3}const absorbed = [];
+{T*3}for (const g of groups) (g.cwd !== void 0 && String(g.cwd).includes("/.wt/") ? absorbed : merged).push(g);
+{T*3}for (const wt of absorbed) {{
+{T*4}const projectPath = String(wt.cwd).split("/.wt/")[0];
+{T*4}const target = merged.find((g) => g.cwd !== void 0 && g.cwd === projectPath);
+{T*4}if (target === void 0) merged.push(wt);
+{T*4}else target.sessions.push(...wt.sessions);
+{T*3}}}
+{T*3}return merged;
 {T*2}}}""",
 )
 

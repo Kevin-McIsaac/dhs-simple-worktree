@@ -1,6 +1,6 @@
 {
   "name": "dsh-worktree-session",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "One-click git-worktree sessions for DeepSeek Harness: the sidebar project row's + button cuts a worktree under <repo>/.wt/<slug> and births the session in it; the session renders under the existing project row. Cleanup route removes tree and branch once the work has merged.",
   "type": "module",
   "main": "lib/index.js",
