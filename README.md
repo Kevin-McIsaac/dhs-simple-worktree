@@ -49,7 +49,8 @@ the native in-checkout path.
 The session row's **⋯ menu** gains a "Delete worktree" item for sessions
 living under `<project>/.wt/` (patched in; flat/search lists never show it).
 Confirm, and the cleanup route removes tree, branch, and workspace
-registration. The route refuses — the dialog then shows the reason with an
+registration. (There is no worktree list endpoint: the + button and the ⋯
+menu are the entire API surface.) The route refuses — the dialog then shows the reason with an
 explicit force confirm — when the tree is dirty or the branch holds commits
 no remote contains and `gh` cannot confirm a merged PR. `gh`'s absence fails
 closed: squash-merged branches are never ancestors of `main`, so ancestry

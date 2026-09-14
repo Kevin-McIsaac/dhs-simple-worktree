@@ -53,7 +53,7 @@ f"""\t\t\t\t\t\t\t\t\t\tonCreate: () => {{
 {T*10}}},""",
 )
 
-# --- 2. groupByWorkspace: re-home .wt sessions under their project row --------
+# --- 2. groupByWorkspace: absorb worktree workspace groups into their project --
 rep(
 f"""\t\tfunction groupByWorkspace(list, workspaces, archived, ungroupedOrder) {{
 {T*3}const groups = [];
@@ -75,41 +75,27 @@ f"""\t\tfunction groupByWorkspace(list, workspaces, archived, ungroupedOrder) {{
 {T*2}}}""",
 f"""\t\tfunction groupByWorkspace(list, workspaces, archived, ungroupedOrder) {{
 {T*3}const groups = [];
-{T*3}/* dsh-worktree-session:patch — worktree sessions live in their tree's own
-{T*3} * registry workspace (attachSession pins cwd to the workspace path, and the
-{T*3} * conversation hero disables the composer without membership), but those
-{T*3} * worktree workspaces must not render as separate project rows. Two passes:
-{T*3} * (a) cwd-stray sessions born under <project>/.wt/ re-home into their
-{T*3} * project's group — manual `git worktree add` trees re-home the same way;
-{T*3} * (b) worktree workspace GROUPS are absorbed into their project's group.
-{T*3} * The top "New session" button is untouched and remains the native
-{T*3} * in-checkout path. */
-{T*3}const memberIds = /* @__PURE__ */ new Set();
-{T*3}for (const workspace of workspaces) for (const id of workspace.sessionIds) memberIds.add(id);
-{T*3}const stray = list.ids.map((id) => list.byId[id]).filter((s) => s !== void 0 && !memberIds.has(s.id) && sessionVisible(s, list.current, archived));
-{T*3}const unclaimed = new Set(stray);
+{T*3}const accounted = /* @__PURE__ */ new Set();
 {T*3}for (const workspace of workspaces) {{
 {T*4}const members = [];
 {T*4}for (const id of workspace.sessionIds) {{
 {T*5}const summary = list.byId[id];
 {T*5}if (summary === void 0) continue;
+{T*5}accounted.add(id);
 {T*5}if (!sessionVisible(summary, list.current, archived)) continue;
 {T*5}members.push(summary);
 {T*4}}}
-{T*4}if (workspace.path !== void 0) {{
-{T*5}const prefix = workspace.path.replace(/\\/+$/, "") + "/.wt/";
-{T*5}for (const s of stray) {{
-{T*6}if (s.cwd !== void 0 && s.cwd.startsWith(prefix)) {{
-{T*7}members.push(s);
-{T*7}unclaimed.delete(s);
-{T*6}}}
-{T*5}}}
-{T*4}}}
 {T*4}groups.push(buildGroup(workspace.workspaceId, workspace.workspaceId, workspace.path, Date.parse(workspace.createdAt), workspace.title, members, "account"));
 {T*3}}}
-{T*3}const rest = [...unclaimed];
-{T*3}if (rest.length > 0) groups.push(buildGroup("", void 0, void 0, void 0, "", ungroupedOrder === void 0 ? rest : orderedUngrouped(rest, ungroupedOrder), ungroupedOrder === void 0 ? "recency" : "account"));
-{T*3}/* (b) absorb worktree workspace groups into their project's group. */
+{T*3}const stray = list.ids.map((id) => list.byId[id]).filter((s) => s !== void 0 && !accounted.has(s.id) && sessionVisible(s, list.current, archived));
+{T*3}if (stray.length > 0) groups.push(buildGroup("", void 0, void 0, void 0, "", ungroupedOrder === void 0 ? stray : orderedUngrouped(stray, ungroupedOrder), ungroupedOrder === void 0 ? "recency" : "account"));
+{T*3}/* dsh-worktree-session:patch — worktree sessions live in their tree's own
+{T*3} * registry workspace (attachSession pins cwd to the workspace path, and the
+{T*3} * conversation hero disables the composer without membership), but those
+{T*3} * worktree workspaces must not render as separate project rows: absorb each
+{T*3} * one's sessions into its project's group. A worktree whose project is not
+{T*3} * registered keeps its own row. The top "New session" button is untouched
+{T*3} * and remains the native in-checkout path. */
 {T*3}const merged = [];
 {T*3}const absorbed = [];
 {T*3}for (const g of groups) (g.cwd !== void 0 && String(g.cwd).includes("/.wt/") ? absorbed : merged).push(g);

@@ -388,41 +388,27 @@ window.__ModuleLoader__.load({
 		*/
 		function groupByWorkspace(list, workspaces, archived, ungroupedOrder) {
 			const groups = [];
-			/* dsh-worktree-session:patch — worktree sessions live in their tree's own
-			 * registry workspace (attachSession pins cwd to the workspace path, and the
-			 * conversation hero disables the composer without membership), but those
-			 * worktree workspaces must not render as separate project rows. Two passes:
-			 * (a) cwd-stray sessions born under <project>/.wt/ re-home into their
-			 * project's group — manual `git worktree add` trees re-home the same way;
-			 * (b) worktree workspace GROUPS are absorbed into their project's group.
-			 * The top "New session" button is untouched and remains the native
-			 * in-checkout path. */
-			const memberIds = /* @__PURE__ */ new Set();
-			for (const workspace of workspaces) for (const id of workspace.sessionIds) memberIds.add(id);
-			const stray = list.ids.map((id) => list.byId[id]).filter((s) => s !== void 0 && !memberIds.has(s.id) && sessionVisible(s, list.current, archived));
-			const unclaimed = new Set(stray);
+			const accounted = /* @__PURE__ */ new Set();
 			for (const workspace of workspaces) {
 				const members = [];
 				for (const id of workspace.sessionIds) {
 					const summary = list.byId[id];
 					if (summary === void 0) continue;
+					accounted.add(id);
 					if (!sessionVisible(summary, list.current, archived)) continue;
 					members.push(summary);
 				}
-				if (workspace.path !== void 0) {
-					const prefix = workspace.path.replace(/\/+$/, "") + "/.wt/";
-					for (const s of stray) {
-						if (s.cwd !== void 0 && s.cwd.startsWith(prefix)) {
-							members.push(s);
-							unclaimed.delete(s);
-						}
-					}
-				}
 				groups.push(buildGroup(workspace.workspaceId, workspace.workspaceId, workspace.path, Date.parse(workspace.createdAt), workspace.title, members, "account"));
 			}
-			const rest = [...unclaimed];
-			if (rest.length > 0) groups.push(buildGroup("", void 0, void 0, void 0, "", ungroupedOrder === void 0 ? rest : orderedUngrouped(rest, ungroupedOrder), ungroupedOrder === void 0 ? "recency" : "account"));
-			/* (b) absorb worktree workspace groups into their project's group. */
+			const stray = list.ids.map((id) => list.byId[id]).filter((s) => s !== void 0 && !accounted.has(s.id) && sessionVisible(s, list.current, archived));
+			if (stray.length > 0) groups.push(buildGroup("", void 0, void 0, void 0, "", ungroupedOrder === void 0 ? stray : orderedUngrouped(stray, ungroupedOrder), ungroupedOrder === void 0 ? "recency" : "account"));
+			/* dsh-worktree-session:patch — worktree sessions live in their tree's own
+			 * registry workspace (attachSession pins cwd to the workspace path, and the
+			 * conversation hero disables the composer without membership), but those
+			 * worktree workspaces must not render as separate project rows: absorb each
+			 * one's sessions into its project's group. A worktree whose project is not
+			 * registered keeps its own row. The top "New session" button is untouched
+			 * and remains the native in-checkout path. */
 			const merged = [];
 			const absorbed = [];
 			for (const g of groups) (g.cwd !== void 0 && String(g.cwd).includes("/.wt/") ? absorbed : merged).push(g);
