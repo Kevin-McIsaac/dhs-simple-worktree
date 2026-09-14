@@ -1,14 +1,12 @@
 # dsh-worktree-session
 
-One-click git-worktree sessions for DeepSeek Harness. The sidebar project row's
-**"+" button** cuts a fresh git worktree and the new session is born inside it —
-the one moment a session's `cwd` is settable — and the session renders **under
-the existing project row**, not under a separate workspace.
+Git worktree based sessions for DeepSeek Harness. The the project row's
+**"+" button** (new session)  creates a the new session rooted in a new worktree.
 
 ## Why
 
-When working with an agentic coding tool it is common to want several tasks
-running in parallel on different branches. DSH supports this with sessions —
+When working with an agentic coding tool it is common to
+run multiple tasks in parallel on different branches. DSH supports this with sessions —
 but every session on a project shares the same Git checkout, so parallel
 sessions can clobber each other: one session's `git checkout` or `git reset`
 yanks the branch out from under another mid-task.
@@ -93,7 +91,7 @@ seam/apply.sh apply
 npm test
 ```
 
-18 tests against real temporary repositories (bare origin + clone, real
+Tests against real temporary repositories (bare origin + clone, real
 `git worktree add`, real `.worktree-bootstrap` runs) plus the route handlers
 through a captured webServer. No DSH, no network, no restart. The test-only
 exports (`config`, `uniqueSlug`, `createWorktree`, `cleanupWorktree`, …) let
