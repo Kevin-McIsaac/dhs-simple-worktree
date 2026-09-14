@@ -1,46 +1,57 @@
 # dsh-worktree-session
 
-One-click git-worktree sessions for DeepSeek Harness. Click the chip, and the
-next session is born inside a fresh git worktree — the one moment a session's
-`cwd` is settable — so the conversation, its sidebar row and its git badge all
-describe the tree, exactly, by construction.
+One-click git-worktree sessions for DeepSeek Harness. The sidebar project row's
+**"+" button** cuts a fresh git worktree and the new session is born inside it —
+the one moment a session's `cwd` is settable — and the session renders **under
+the existing project row**, not under a separate workspace.
 
-## What the chip does
+## What the "+" button does
 
-`⎇ worktree` lives in the conversation input bar (the shipped
-`conversation.input.left` seam — no core patch, same slot the
-`dsh-git-badge` chip uses). One click, no typing:
+One click, no typing, on any project row whose workspace is a git repo:
 
-1. **fetch** — `git fetch origin` (failure degrades to a warning; the branch is
-   cut from last-known refs, the git-worktree skill's own flow).
-2. **cut** — `git worktree add -b wt/<slug> .wt/<slug> <base>` where `<slug>`
-   is `wt-YYYYMMDD-HHMM` (auto-suffixed `-2`, `-3` on collision) and `<base>`
-   is `origin/HEAD`, falling back to `origin/main`.
-3. **exclude** — `.wt/` is appended to `.git/info/exclude` (local-only; never a
-   tracked file).
-4. **bootstrap** — the checkout's `.env` is symlinked into the tree when one
+1. **cut** — the plugin route fetches `origin`, then
+   `git worktree add -b wt/<slug> .wt/<slug> <base>` where `<slug>` is
+   `wt-YYYYMMDD-HHMM` (auto-suffixed `-2`, `-3` on collision) and `<base>` is
+   `origin/HEAD`, falling back to `origin/main`. A failed fetch degrades to a
+   warning; the branch is cut from last-known refs.
+2. **bootstrap** — the checkout's `.env` is symlinked into the tree when one
    exists; if the repo declares an executable `.worktree-bootstrap` at its
    root, it runs inside the tree. Failures are reported, never fatal.
-5. **register** — the tree becomes a DSH workspace (`workspaceRegistry.create`,
-   idempotent), so it appears in the sidebar with its own session rows.
-6. **open** — the client then runs DSH's own native flow,
-   `sessions.create({ workspaceId })` → `sessions.open(id)` — identical to the
-   sidebar's "New session in {name}" button. `session.create` resolves
-   `cwd = workspace.path`, and cwd is immutable thereafter.
+3. **open** — the client births the session with DSH's own
+   `sessions.create({ cwd })` → `sessions.open(id)`. `session.create` sets
+   `cwd = the tree`, and cwd is immutable thereafter.
 
-The chevron (`▾`) beside the chip opens a remove popover listing the repo's
-`.wt` trees with their safety facts (`*` dirty, `✓` merged). Removal runs the
-cleanup route, which refuses — showing the reason, with an explicit **force**
-button — when the tree is dirty or the branch holds commits no remote contains
-and `gh` cannot confirm a merged PR. `gh`'s absence fails closed: squash-merged
-branches are never ancestors of `main`, so ancestry alone must never be the
-authority.
+Anything else — plugin absent, route down, not a git repo — falls back to the
+native flow, so non-git workspaces behave exactly as upstream.
+
+## Why the session shows under the project
+
+DSH's `attachSession` refuses any session whose `cwd` differs from its
+workspace path, so a worktree session can never be a registry member of the
+project — the trees are deliberately **never registered as workspaces**.
+Instead a small hash-guarded patch to the workspace browser re-homes sessions
+whose `cwd` sits under `<project>/.wt/` into that project's group. This works
+for trees you cut manually with plain `git worktree add` too. The sidebar's
+top **"New session" button is untouched** — it remains the native
+in-checkout path.
+
+## The chip
+
+The input-bar chip (`⎇ worktree`, shipped `conversation.input.left` seam) does
+the same thing for the conversation's own workspace, and its `▾` chevron opens
+a remove popover listing the repo's `.wt` trees with their safety facts
+(`*` dirty, `✓` merged). Removal runs the cleanup route, which refuses —
+showing the reason, with an explicit **force** button — when the tree is dirty
+or the branch holds commits no remote contains and `gh` cannot confirm a
+merged PR. `gh`'s absence fails closed: squash-merged branches are never
+ancestors of `main`, so ancestry alone must never be the authority.
 
 ## Safety invariants
 
 - Only trees under `<repo>/.wt/` with a `wt/…` branch are ever removed.
 - The main checkout is never removable.
 - Cleanup requires either remote containment, a MERGED PR, or `force: true`.
+- `.wt/` is excluded via `.git/info/exclude` (local-only; never a tracked file).
 
 ## Install
 
@@ -49,7 +60,17 @@ dsh plugin --profile web add link:/home/kmcisaac/Projects/dhs-simple-worktree
 ```
 
 then add `"dsh-worktree-session"` to `dsh.profile.bundles` in
-`~/.dsh/profiles/web/package.json`, and restart the web process.
+`~/.dsh/profiles/web/package.json`, apply the sidebar patch, and restart the
+web process:
+
+```bash
+seam/apply.sh apply      # hash-guarded; refuses unknown upstream builds
+seam/apply.sh revert     # restore the baseline (badge seam included) at any time
+seam/apply.sh status     # run this first after a DSH update
+```
+
+The patch composes with the `dsh-git-badge` seam patch (disjoint regions); its
+pristine baseline is the badge-patched build.
 
 ## Testing
 
@@ -57,7 +78,7 @@ then add `"dsh-worktree-session"` to `dsh.profile.bundles` in
 npm test
 ```
 
-19 tests against real temporary repositories (bare origin + clone, real
+20 tests against real temporary repositories (bare origin + clone, real
 `git worktree add`, real `.worktree-bootstrap` runs) plus the route handlers
 through a captured webServer. No DSH, no network, no restart. The test-only
 exports (`config`, `uniqueSlug`, `createWorktree`, `cleanupWorktree`,

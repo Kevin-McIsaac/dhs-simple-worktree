@@ -1,7 +1,7 @@
 {
   "name": "dsh-worktree-session",
-  "version": "0.1.0",
-  "description": "One-click git-worktree sessions for DeepSeek Harness: cuts a worktree under <repo>/.wt/<slug>, registers it as a workspace, and opens the new session with its cwd in the tree. Cleanup route removes tree, branch and workspace once the work has merged.",
+  "version": "0.2.0",
+  "description": "One-click git-worktree sessions for DeepSeek Harness: the sidebar project row's + button cuts a worktree under <repo>/.wt/<slug> and births the session in it; the session renders under the existing project row. Cleanup route removes tree and branch once the work has merged.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -42,6 +42,7 @@
     "cordis.patch.yml",
     "package.json",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "seam"
   ]
 }

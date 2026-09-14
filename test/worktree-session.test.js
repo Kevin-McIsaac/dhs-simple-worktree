@@ -78,7 +78,7 @@ function fakeRegistry() {
 const FIXED_NOW = new Date(2026, 8, 14, 10, 30);
 
 async function cutOne(registry, repo, overrides = {}) {
-	return createWorktree(registry, repo, overrides.now ?? FIXED_NOW);
+	return createWorktree(repo, overrides.now ?? FIXED_NOW);
 }
 
 // ---------- slug naming ----------
@@ -137,16 +137,15 @@ test("createWorktree cuts the tree, links .env, runs the bootstrap hook, registe
 	assert.equal(result.envLinked, true);
 	assert.deepEqual(result.bootstrap, { ran: true, ok: true });
 
-	const tree = result.path;
+	const tree = result.cwd;
 	assert.ok(existsSync(join(tree, "readme.md")), "tree has tracked files");
 	assert.ok(existsSync(join(tree, "bootstrapped.txt")), "bootstrap ran inside the tree");
 	assert.equal(readFileSync(join(tree, ".env"), "utf8"), "SECRET=1\n");
 	assert.equal(git(tree, "branch", "--show-current").trim(), result.branch);
 	assert.equal(git(tree, "rev-parse", "HEAD").trim(), git(repo, "rev-parse", "origin/main").trim(), "branch tip == origin/main");
 
-	const entity = registry.get(result.workspaceId);
-	assert.ok(entity, "workspace registered");
-	assert.equal(entity.path, tree);
+	assert.ok(!("workspaceId" in result), "trees are never registered as workspaces");
+	assert.equal(registry.list().length, 0, "registry untouched by create");
 	// .wt/ must be locally excluded, not tracked
 	assert.ok(readFileSync(join(repo, ".git", "info", "exclude"), "utf8").includes(".wt/"));
 });
@@ -168,7 +167,7 @@ test("createWorktree survives a failed fetch by branching from last-known refs",
 	const result = await cutOne(registry, repo);
 	assert.equal(result.warnings.length, 1);
 	assert.match(result.warnings[0], /git fetch origin failed/);
-	assert.equal(git(result.path, "rev-parse", "HEAD").trim(), git(repo, "rev-parse", "origin/main").trim());
+	assert.equal(git(result.cwd, "rev-parse", "HEAD").trim(), git(repo, "rev-parse", "origin/main").trim());
 });
 
 test("createWorktree reports a failing bootstrap hook instead of failing the session", async (t) => {
@@ -180,7 +179,7 @@ test("createWorktree reports a failing bootstrap hook instead of failing the ses
 	assert.equal(result.bootstrap.ok, false);
 	assert.match(result.bootstrap.reason, /exit 3/);
 	assert.ok(result.warnings.some((w) => w.includes(".worktree-bootstrap failed")));
-	assert.ok(existsSync(result.path), "tree still exists");
+	assert.ok(existsSync(result.cwd), "tree still exists");
 });
 
 test("createWorktree refuses to treat a non-executable hook as runnable", async (t) => {
@@ -199,21 +198,21 @@ test("cleanupWorktree refuses an unmerged branch, removes it with force", async 
 	const registry = fakeRegistry();
 	const created = await cutOne(registry, repo);
 
-	writeFileSync(join(created.path, "work.txt"), "precious\n");
-	git(created.path, "add", ".");
-	git(created.path, "commit", "-m", "precious work");
+	writeFileSync(join(created.cwd, "work.txt"), "precious\n");
+	git(created.cwd, "add", ".");
+	git(created.cwd, "commit", "-m", "precious work");
 
-	const refused = await cleanupWorktree(registry, created.workspaceId);
+	const refused = await cleanupWorktree(registry, created.cwd);
 	assert.equal(refused.ok, false);
 	assert.equal(refused.status, 409);
 	assert.match(refused.error, /no remote contains|merged PR/);
-	assert.ok(existsSync(created.path), "tree untouched on refusal");
+	assert.ok(existsSync(created.cwd), "tree untouched on refusal");
 
-	const forced = await cleanupWorktree(registry, created.workspaceId, true);
+	const forced = await cleanupWorktree(registry, created.cwd, true);
 	assert.equal(forced.ok, true);
-	assert.ok(!existsSync(created.path), "tree removed");
+	assert.ok(!existsSync(created.cwd), "tree removed");
 	assert.throws(() => git(repo, "rev-parse", "--verify", created.branch), "branch deleted");
-	assert.equal(registry.get(created.workspaceId), void 0, "workspace unregistered");
+	assert.ok(!("workspaceId" in created), "nothing was registered to un-register");
 });
 
 test("cleanupWorktree allows a branch whose content reached origin (simulated merge)", async (t) => {
@@ -221,38 +220,37 @@ test("cleanupWorktree allows a branch whose content reached origin (simulated me
 	const registry = fakeRegistry();
 	const created = await cutOne(registry, repo);
 
-	writeFileSync(join(created.path, "work.txt"), "landed\n");
-	git(created.path, "add", ".");
-	git(created.path, "commit", "-m", "landed");
-	git(created.path, "push", "origin", `${created.branch}:main`); // squash-equivalent: content on origin
+	writeFileSync(join(created.cwd, "work.txt"), "landed\n");
+	git(created.cwd, "add", ".");
+	git(created.cwd, "commit", "-m", "landed");
+	git(created.cwd, "push", "origin", `${created.branch}:main`); // squash-equivalent: content on origin
 	git(repo, "fetch", "origin", "--quiet");
 
-	const result = await cleanupWorktree(registry, created.workspaceId);
+	const result = await cleanupWorktree(registry, created.cwd);
 	assert.equal(result.ok, true, `expected success, got: ${JSON.stringify(result.error ?? result)}`);
-	assert.ok(!existsSync(created.path));
+	assert.ok(!existsSync(created.cwd));
 });
 
 test("cleanupWorktree refuses a dirty tree without force", async (t) => {
 	const { repo } = mkRepo(t);
 	const registry = fakeRegistry();
 	const created = await cutOne(registry, repo);
-	writeFileSync(join(created.path, "mess.txt"), "uncommitted\n");
+	writeFileSync(join(created.cwd, "mess.txt"), "uncommitted\n");
 
-	const refused = await cleanupWorktree(registry, created.workspaceId);
+	const refused = await cleanupWorktree(registry, created.cwd);
 	assert.equal(refused.ok, false);
 	assert.match(refused.error, /uncommitted changes/);
 
-	const forced = await cleanupWorktree(registry, created.workspaceId, true);
+	const forced = await cleanupWorktree(registry, created.cwd, true);
 	assert.equal(forced.ok, true);
 });
 
 test("cleanupWorktree never removes the main checkout", async (t) => {
 	const { repo } = mkRepo(t);
 	const registry = fakeRegistry();
-	// Simulate a registry entry that points at the repo root itself.
-	const entity = await registry.create(repo);
+	// The registry entry is irrelevant now — cleanup addresses the tree by path.
 	await assert.rejects(
-		() => cleanupWorktree(registry, entity.id),
+		() => cleanupWorktree(registry, repo),
 		/main checkout|not a wt\/ branch/,
 	);
 	assert.ok(existsSync(repo));
@@ -261,11 +259,10 @@ test("cleanupWorktree never removes the main checkout", async (t) => {
 test("cleanupWorktree refuses a workspace whose branch is not wt/", async (t) => {
 	const { repo } = mkRepo(t);
 	const registry = fakeRegistry();
-	// A linked worktree on a non-wt branch: cut it out-of-band, then register it.
+	// A linked worktree on a non-wt branch, cut out-of-band without the plugin.
 	git(repo, "worktree", "add", "-b", "feature/x", join(".wt", "feature-x"), "origin/main");
-	const entity = await registry.create(join(repo, ".wt", "feature-x"));
 	await assert.rejects(
-		() => cleanupWorktree(registry, entity.id),
+		() => cleanupWorktree(registry, join(repo, ".wt", "feature-x")),
 		/not a wt\/ branch/,
 	);
 });
@@ -276,9 +273,9 @@ test("listWorktrees reports the repo's .wt trees with safety facts", async (t) =
 	const { repo } = mkRepo(t);
 	const registry = fakeRegistry();
 	const first = await cutOne(registry, repo);
-	const second = await createWorktree(registry, repo, new Date(2026, 8, 14, 10, 31));
+	const second = await createWorktree(repo, new Date(2026, 8, 14, 10, 31));
 
-	writeFileSync(join(second.path, "scratch.txt"), "dirty\n");
+	writeFileSync(join(second.cwd, "scratch.txt"), "dirty\n");
 
 	const trees = await listWorktrees(registry, repo);
 	assert.equal(trees.length, 2);
@@ -288,7 +285,7 @@ test("listWorktrees reports the repo's .wt trees with safety facts", async (t) =
 	assert.equal(firstTree.dirty, false);
 	assert.equal(firstTree.merged, true, "fresh tree == origin/main, so remotes contain it");
 	assert.equal(secondTree.dirty, true);
-	assert.ok(firstTree.workspaceId !== void 0);
+	assert.ok(firstTree.path !== void 0 && firstTree.path.includes("/.wt/"));
 });
 
 // ---------- routes ----------
@@ -338,21 +335,33 @@ async function callRoute(routes, path, req) {
 	return { status: res.status, body: JSON.parse(res.body) };
 }
 
-test("routes: create end-to-end from a session id", async (t) => {
+test("routes: create end-to-end from a session id OR a workspace id", async (t) => {
 	const { repo } = mkRepo(t);
 	const registry = fakeRegistry();
 	const routes = boot({ repo, registry });
 
-	const { status, body } = await callRoute(routes, "/api/worktree-session/create", fakeReq(JSON.stringify({ sessionId: "s1" })));
-	assert.equal(status, 200);
+	const fromSession = await callRoute(routes, "/api/worktree-session/create", fakeReq(JSON.stringify({ sessionId: "s1" })));
+	assert.equal(fromSession.status, 200);
 	// the route creates with the real clock, so assert the shape, not the stamp
-	assert.match(body.branch, /^wt\/wt-\d{8}-\d{4}$/);
-	assert.equal(body.branch, `wt/${body.slug}`);
-	assert.ok(registry.get(body.workspaceId), "workspace registered");
+	assert.match(fromSession.body.branch, /^wt\/wt-\d{8}-\d{4}$/);
+	assert.equal(fromSession.body.branch, `wt/${fromSession.body.slug}`);
+	assert.ok(fromSession.body.cwd.startsWith(join(repo, ".wt")), "response carries the tree cwd");
+	assert.ok(!("workspaceId" in fromSession.body), "trees are never registered");
+	assert.equal(registry.list().length, 1, "only the seeded project workspace exists");
+
+	// the sidebar "+" flow knows the workspace before any session exists
+	const ws = registry.list()[0];
+	const fromWorkspace = await callRoute(routes, "/api/worktree-session/create", fakeReq(JSON.stringify({ workspaceId: ws.id })));
+	assert.equal(fromWorkspace.status, 200);
+	assert.ok(fromWorkspace.body.cwd.startsWith(join(repo, ".wt")), "workspace-id flow cuts the tree too");
 
 	const badSession = await callRoute(routes, "/api/worktree-session/create", fakeReq(JSON.stringify({ sessionId: "nope" })));
 	assert.equal(badSession.status, 400);
 	assert.match(badSession.body.error, /unknown session/);
+
+	const badBody = await callRoute(routes, "/api/worktree-session/create", fakeReq(JSON.stringify({})));
+	assert.equal(badBody.status, 400);
+	assert.match(badBody.body.error, /workspaceId.*sessionId/);
 
 	const badJson = await callRoute(routes, "/api/worktree-session/create", fakeReq("{not json"));
 	assert.equal(badJson.status, 400);
@@ -373,18 +382,30 @@ test("routes: list and cleanup end-to-end", async (t) => {
 	assert.equal(listed.body.worktrees[0].branch, created.body.branch);
 
 	// unmerged → 409 → force → gone (the tree must actually hold unmerged work)
-	writeFileSync(join(created.body.path, "work.txt"), "precious\n");
-	git(created.body.path, "add", ".");
-	git(created.body.path, "commit", "-m", "precious work");
-	const refused = await callRoute(routes, "/api/worktree-session/cleanup", fakeReq(JSON.stringify({ workspaceId: created.body.workspaceId })));
+	writeFileSync(join(created.body.cwd, "work.txt"), "precious\n");
+	git(created.body.cwd, "add", ".");
+	git(created.body.cwd, "commit", "-m", "precious work");
+	const refused = await callRoute(routes, "/api/worktree-session/cleanup", fakeReq(JSON.stringify({ path: created.body.cwd })));
 	assert.equal(refused.status, 409);
-	const forced = await callRoute(routes, "/api/worktree-session/cleanup", fakeReq(JSON.stringify({ workspaceId: created.body.workspaceId, force: true })));
+	const forced = await callRoute(routes, "/api/worktree-session/cleanup", fakeReq(JSON.stringify({ path: created.body.cwd, force: true })));
 	assert.equal(forced.status, 200);
-	assert.ok(!existsSync(created.body.path));
+	assert.ok(!existsSync(created.body.cwd));
 
-	const unknown = await callRoute(routes, "/api/worktree-session/cleanup", fakeReq(JSON.stringify({ workspaceId: "ws-999" })));
+	const unknown = await callRoute(routes, "/api/worktree-session/cleanup", fakeReq(JSON.stringify({ path: "/nonexistent/.wt/nope" })));
 	assert.equal(unknown.status, 400);
-	assert.match(unknown.body.error, /not found/);
+	assert.match(unknown.body.error, /not inside a git repository/);
+});
+
+test("cleanup retires a v0.1-era workspace registration left on the tree", async (t) => {
+	const { repo } = mkRepo(t);
+	const registry = fakeRegistry();
+	const created = await createWorktree(repo, FIXED_NOW);
+	// simulate what a v0.1 install registered for this tree
+	const stale = await registry.create(created.cwd);
+	const result = await cleanupWorktree(registry, created.cwd);
+	assert.equal(result.ok, true);
+	assert.ok(!existsSync(created.cwd));
+	assert.equal(registry.get(stale.id), void 0, "stale workspace registration retired");
 });
 
 test("makeDeps resolves the session cwd through the sessions service", (t) => {
