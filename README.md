@@ -9,17 +9,25 @@ the existing project row**, not under a separate workspace.
 
 One click, no typing, on any project row whose workspace is a git repo:
 
-1. **cut** — the plugin route fetches `origin`, then
+1. **cut** — the plugin route runs
    `git worktree add -b wt/<slug> .wt/<slug> <base>` where `<slug>` is
    `wt-YYYYMMDD-HHMM` (auto-suffixed `-2`, `-3` on collision) and `<base>` is
-   `origin/HEAD`, falling back to `origin/main`. A failed fetch degrades to a
-   warning; the branch is cut from last-known refs.
-2. **bootstrap** — the checkout's `.env` is symlinked into the tree when one
-   exists; if the repo declares an executable `.worktree-bootstrap` at its
-   root, it runs inside the tree. Failures are reported, never fatal.
+   `origin/HEAD`, falling back to `origin/main`. There is **no pre-cut
+   fetch**: the branch is cut from last-known refs (sub-second; the git
+   badge keeps refs fresh).
+2. **bootstrap, in the background** — the checkout's `.env` is symlinked into
+   the tree when one exists; if the repo declares an executable
+   `.worktree-bootstrap` at its root, it runs inside the tree WITHOUT
+   blocking the session. Its outcome streams to the progress feed and never
+   fails the session.
 3. **open** — the client births the session with DSH's own
-   `sessions.create({ cwd })` → `sessions.open(id)`. `session.create` sets
-   `cwd = the tree`, and cwd is immutable thereafter.
+   `sessions.create({ workspaceId })` → `sessions.open(id)`.
+   `session.create` sets `cwd = the tree`, and cwd is immutable thereafter.
+
+While the cut runs, a progress chip appears in the input bar with live
+per-step text pushed over an SSE feed (`/api/worktree-session/progress`,
+badge-style event streaming — no polling anywhere) and disappears when the
+bootstrap outcome settles.
 
 Anything else — plugin absent, route down, not a git repo — falls back to the
 native flow, so non-git workspaces behave exactly as upstream.
